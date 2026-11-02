@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shared Compute Pool</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">compute<span class="dot">.</span>siv19<span class="dot">.</span>dev</div>
+  <div class="conn" id="conn">connecting…</div>
+</header>
+
+<main>
+  <!-- Aggregate header: ONLINE nodes only (§3) -->
+  <section class="agg" id="agg">
+    <div class="stat"><span class="num" id="s-cpu">—</span><span class="lbl">vCPUs</span></div>
+    <div class="stat"><span class="num" id="s-gpu">—</span><span class="lbl">GPUs</span></div>
+    <div class="stat"><span class="num" id="s-vram">—</span><span class="lbl">VRAM (cuda / metal)</span></div>
+    <div class="stat"><span class="num" id="s-ram">—</span><span class="lbl">RAM</span></div>
+    <div class="stat swap"><span class="num" id="s-swap">—</span><span class="lbl">Swap (slow)</span></div>
+    <div class="stat"><span class="num" id="s-disk">—</span><span class="lbl">Disk</span></div>
+    <div class="stat"><span class="num" id="s-nodes">—</span><span class="lbl">online / offline</span></div>
+    <div class="stat"><span class="num" id="s-jobs">—</span><span class="lbl">running / queued</span></div>
+  </section>
+
+  <div class="grid">
+    <!-- Submit form -->
+    <section class="card submit">
+      <h2>Submit a job</h2>
+      <form id="submit-form">
+        <label>File(s) <small>.py / .ipynb / .java (+ requirements.txt)</small>
+          <input type="file" id="f-files" name="files" multiple required />
+        </label>
+        <div class="row">
+          <label>GPU
+            <select id="f-gpu" name="needs_gpu">
+              <option value="">none</option>
+              <option value="cuda">cuda</option>
+              <option value="metal">metal</option>
+            </select>
+          </label>
+          <label>Min RAM (MB)
+            <input type="number" id="f-ram" name="min_ram_mb" min="0" placeholder="0" />
+          </label>
+          <label>Timeout (s)
+            <input type="number" id="f-timeout" name="timeout_sec" min="0" placeholder="3600" />
+          </label>
+        </div>
+        <div class="row">
+          <label>Arch
+            <select id="f-arch" name="needs_arch">
+              <option value="">any</option>
+              <option value="amd64">amd64</option>
+              <option value="arm64">arm64</option>
+            </select>
+          </label>
+          <label>OS
+            <select id="f-os" name="needs_os">
+              <option value="">any</option>
+              <option value="linux">linux</option>
+              <option value="darwin">darwin</option>
+              <option value="windows">windows</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="f-preempt" name="allow_preempt" /> allow preemptible (Colab)</label>
+          <label class="check"><input type="checkbox" id="f-disk" name="disk_backed" /> disk-backed weights (§6.4)</label>
+        </div>
+        <button type="submit">Submit</button>
+        <div class="formmsg" id="submit-msg"></div>
+      </form>
+    </section>
+
+    <!-- Nodes -->
+    <section class="card">
+      <h2>Nodes</h2>
+      <div id="nodes" class="nodes"></div>
+      <h3 class="offline-h">Offline capacity</h3>
+      <div id="nodes-offline" class="nodes offline"></div>
+    </section>
+  </div>
+
+  <!-- Jobs -->
+  <section class="card">
+    <h2>Jobs</h2>
+    <table class="jobs" id="jobs-table">
+      <thead>
+        <tr><th>ID</th><th>Name</th><th>Runtime</th><th>State</th><th>Node</th><th>Lane</th><th>Exit</th><th>Artifacts</th><th></th></tr>
+      </thead>
+      <tbody id="jobs-body"></tbody>
+    </table>
+  </section>
+  <!-- Usage view (Phase 3) -->
+  <section class="card">
+    <h2>Usage</h2>
+    <div id="usage" class="usage"></div>
+  </section>
+</main>
+
+<!-- Log viewer modal -->
+<div class="modal" id="log-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span id="log-title">Logs</span>
+      <button id="log-close">✕</button>
+    </div>
+    <pre class="logs" id="log-body"></pre>
+    <div class="modal-foot" id="artifact-list"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

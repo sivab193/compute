@@ -1,0 +1,31 @@
+# Control plane for the Mac mini (§2 Layer 1). One service: the compute-server
+# binary + its SQLite DB + job bundles in a persisted volume. No cloud, no
+# monthly cost. Reachable only over the tailnet (see docs/HOSTING.md).
+#
+#   cd deploy && POOL_JOIN_TOKEN=... POOL_DASH_TOKEN=... docker compose up -d
+#
+# On macOS, running the server bare (make run-server) is simpler than Docker
+# (open decision §2); this compose file is for a Linux control-plane host if the
+# mini is ever swapped out.
+services:
+  compute-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: compute-server:0.1.0
+    container_name: compute-server
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"   # bind to loopback; tailscale serve fronts it
+    environment:
+      POOL_ADDR: "0.0.0.0:8080"
+      POOL_DATA: "/data"
+      POOL_JOIN_TOKEN: "${POOL_JOIN_TOKEN:?set POOL_JOIN_TOKEN}"
+      POOL_DASH_TOKEN: "${POOL_DASH_TOKEN:-}"
+      POOL_DIST: "/dist"
+    volumes:
+      - pool-data:/data
+      - ./dist:/dist:ro
+
+volumes:
+  pool-data:
