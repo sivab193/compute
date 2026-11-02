@@ -405,6 +405,7 @@ func nodeFromHeartbeat(name string, hb types.Heartbeat, now time.Time) *types.No
 		Labels:          hb.Labels,
 		RunningJobs:     hb.RunningJobs,
 		DockerAvailable: hb.DockerAvailable,
+		Toolchains:      hb.Toolchains,
 		AgentVersion:    hb.AgentVersion,
 		LastHeartbeat:   now,
 	}
@@ -420,9 +421,17 @@ func aggregate(nodes []*types.Node, jobs []*types.Job) types.Aggregate {
 		}
 		a.OnlineNodes++
 		a.VCPUs += n.CPUCount
+		// A job takes a whole machine in v1, so the cores that can actually
+		// accept work right now are those on idle machines.
+		if n.RunningJobs == 0 {
+			a.VCPUsIdle += n.CPUCount
+		}
 		a.RAMTotalMB += n.RAMTotalMB
+		a.RAMFreeMB += n.RAMFreeMB
 		a.SwapTotalMB += n.SwapTotalMB
 		a.DiskTotalMB += n.DiskTotalMB
+		a.DiskFreeMB += n.DiskFreeMB
+		a.LoadAvg1 += n.LoadAvg1
 		a.RunningJobs += n.RunningJobs
 		for _, g := range n.GPUs {
 			a.GPUCount++

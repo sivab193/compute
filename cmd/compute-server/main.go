@@ -24,6 +24,7 @@ func main() {
 		dashTok = flag.String("dash-token", os.Getenv("POOL_DASH_TOKEN"), "optional bearer token for dashboard/CLI access")
 		timeout = flag.Int("default-timeout", 3600, "default per-job timeout in seconds")
 		distDir = flag.String("dist", os.Getenv("POOL_DIST"), "optional directory of agent binaries served at /dist for node bootstrap")
+		pubURL  = flag.String("public-url", os.Getenv("POOL_PUBLIC_URL"), "externally reachable base URL (e.g. https://compute.tailnet.ts.net) used in generated onboarding commands")
 	)
 	flag.Parse()
 
@@ -41,6 +42,7 @@ func main() {
 		DashToken:         *dashTok,
 		DefaultTimeoutSec: *timeout,
 		DistDir:           *distDir,
+		PublicURL:         *pubURL,
 	})
 	if err != nil {
 		log.Fatalf("init server: %v", err)

@@ -48,8 +48,13 @@ type Heartbeat struct {
 	// RunningJobs is the count of jobs the agent currently has executing.
 	RunningJobs int `json:"running_jobs"`
 	// DockerAvailable signals whether the node can isolate jobs in containers.
-	DockerAvailable bool   `json:"docker_available"`
-	AgentVersion    string `json:"agent_version"`
+	DockerAvailable bool `json:"docker_available"`
+	// Toolchains reports which job runtimes this node can actually execute,
+	// probed on the host (see the Tool* constants). The submit form is built
+	// from the union of these, so the operator is never offered a runtime that
+	// no machine in the pool can run.
+	Toolchains   map[string]bool `json:"toolchains"`
+	AgentVersion string          `json:"agent_version"`
 }
 
 // Node is the control plane's view of a registered machine.
@@ -69,9 +74,25 @@ type Node struct {
 	Labels          map[string]string `json:"labels"`
 	RunningJobs     int               `json:"running_jobs"`
 	DockerAvailable bool              `json:"docker_available"`
+	Toolchains      map[string]bool   `json:"toolchains"`
 	AgentVersion    string            `json:"agent_version"`
 	LastHeartbeat   time.Time         `json:"last_heartbeat"`
 	RegisteredAt    time.Time         `json:"registered_at"`
+}
+
+// CanRun reports whether this node claims the toolchain for a job runtime.
+// A node that has not reported toolchains yet (older agent) is given the
+// benefit of the doubt, so upgrading the control plane first never strands a
+// fleet.
+func (n *Node) CanRun(r RuntimeKind) bool {
+	if len(n.Toolchains) == 0 {
+		return true
+	}
+	tool := RuntimeTool(r)
+	if tool == "" {
+		return true
+	}
+	return n.Toolchains[tool]
 }
 
 // Preemptible reports whether this node may vanish mid-job (e.g. Colab).
@@ -126,6 +147,9 @@ type Job struct {
 	Runtime   RuntimeKind `json:"runtime"`
 	EntryFile string      `json:"entry_file"` // name of the file to run within the bundle
 	State     JobState    `json:"state"`
+	// Seq is a per-pool sequence number assigned on submit and used as the
+	// short human-facing code (J1, J2, …). The random ID stays the URL key.
+	Seq int `json:"seq"`
 
 	// Requirements (the scheduler filters/fits against these).
 	NeedsGPU     GPUType `json:"needs_gpu"`     // "" means no GPU required
@@ -188,18 +212,22 @@ type JobResult struct {
 
 // Aggregate is the dashboard header: totals across ONLINE nodes only (§3).
 type Aggregate struct {
-	OnlineNodes  int    `json:"online_nodes"`
-	OfflineNodes int    `json:"offline_nodes"`
-	VCPUs        int    `json:"vcpus"`
-	GPUCount     int    `json:"gpu_count"`
-	VRAMTotalMB  uint64 `json:"vram_total_mb"`
-	CUDAVRAMMB   uint64 `json:"cuda_vram_mb"`
-	MetalVRAMMB  uint64 `json:"metal_vram_mb"`
-	RAMTotalMB   uint64 `json:"ram_total_mb"`
-	SwapTotalMB  uint64 `json:"swap_total_mb"`
-	DiskTotalMB  uint64 `json:"disk_total_mb"`
-	RunningJobs  int    `json:"running_jobs"`
-	QueuedJobs   int    `json:"queued_jobs"`
+	OnlineNodes  int     `json:"online_nodes"`
+	OfflineNodes int     `json:"offline_nodes"`
+	VCPUs        int     `json:"vcpus"`
+	VCPUsIdle    int     `json:"vcpus_idle"`
+	GPUCount     int     `json:"gpu_count"`
+	VRAMTotalMB  uint64  `json:"vram_total_mb"`
+	CUDAVRAMMB   uint64  `json:"cuda_vram_mb"`
+	MetalVRAMMB  uint64  `json:"metal_vram_mb"`
+	RAMTotalMB   uint64  `json:"ram_total_mb"`
+	RAMFreeMB    uint64  `json:"ram_free_mb"`
+	SwapTotalMB  uint64  `json:"swap_total_mb"`
+	DiskTotalMB  uint64  `json:"disk_total_mb"`
+	DiskFreeMB   uint64  `json:"disk_free_mb"`
+	LoadAvg1     float64 `json:"load_avg_1"`
+	RunningJobs  int     `json:"running_jobs"`
+	QueuedJobs   int     `json:"queued_jobs"`
 }
 
 // Usage is the Phase 3 usage view: lifetime job accounting the dashboard shows

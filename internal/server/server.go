@@ -40,6 +40,7 @@ type Config struct {
 	DashToken         string // optional bearer token to view/submit via the dashboard/API
 	DefaultTimeoutSec int    // default job timeout when a job specifies none
 	DistDir           string // optional: directory of agent binaries served at /dist for bootstrap
+	PublicURL         string // optional: externally reachable base URL used in generated onboarding commands
 }
 
 // Server is the running control plane.
@@ -109,6 +110,10 @@ func (s *Server) routes() {
 
 	// Dashboard/CLI-facing API (authenticated by dash token when configured).
 	s.mux.HandleFunc("GET /api/aggregate", s.handleAggregate)
+	s.mux.HandleFunc("GET /api/capabilities", s.handleCapabilities)
+	s.mux.HandleFunc("POST /api/feasibility", s.handleFeasibility)
+	s.mux.HandleFunc("GET /api/colab", s.handleColab)
+	s.mux.HandleFunc("GET /api/enroll", s.handleEnroll)
 	s.mux.HandleFunc("GET /api/usage", s.handleUsage)
 	s.mux.HandleFunc("GET /api/nodes", s.handleListNodes)
 	s.mux.HandleFunc("DELETE /api/nodes/{name}", s.handleDeleteNode)

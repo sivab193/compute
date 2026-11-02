@@ -47,6 +47,12 @@ func main() {
 		err = cmdLogs(args)
 	case "get":
 		err = cmdGet(args)
+	case "colab":
+		err = cmdColab(args)
+	case "caps", "capabilities":
+		err = cmdCaps(args)
+	case "node-add":
+		err = cmdNodeAdd(args)
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -66,10 +72,13 @@ func usage() {
 
 Usage:
   pool submit <file> [more files…] [flags]
+  pool caps                      what the pool can run right now
   pool nodes
   pool jobs
   pool get <job-id>
   pool logs <job-id>
+  pool colab [--snippet]         Colab runtime options + join cell
+  pool node-add [windows|linux|macos] [--name NAME]
 
 Submit flags:
   --needs gpu:cuda|gpu:metal   require a GPU type
@@ -81,6 +90,8 @@ Submit flags:
   --timeout 3600               per-job timeout seconds
   --name "my job"              human label
   --entry file.py              which uploaded file is the entry point
+
+Run 'pool caps' first to see which of the above the pool can satisfy.
 
 Global flags (or env):
   --server URL    control plane base URL     ($POOL_SERVER)
@@ -340,7 +351,9 @@ func cmdLogs(args []string) error {
 // disk-backed) take no value; everything else consumes the next token.
 func parseArgs(args []string) (positional []string, flags map[string]string) {
 	flags = map[string]string{}
-	boolFlags := map[string]bool{"allow-preempt": true, "disk-backed": true}
+	boolFlags := map[string]bool{
+		"allow-preempt": true, "disk-backed": true, "snippet": true, "json": true,
+	}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if strings.HasPrefix(a, "--") {

@@ -30,10 +30,27 @@ See [docs/HOSTING.md](docs/HOSTING.md) for deploying behind a tailnet HTTPS name
   embedded web dashboard. Never runs user code itself.
 - **node agent** (`cmd/pool-agent`) — one dependency-free static binary per
   machine. Registers, heartbeats CPU/GPU/RAM/swap/disk + labels every 15s,
-  leases fitting jobs, runs them (Docker on Linux, bare on macOS), streams
-  logs, uploads artifacts.
-- **CLI** (`cmd/pool`) — `pool submit`, `nodes`, `jobs`, `logs`, `get`.
+  reports which runtimes it can actually execute, leases fitting jobs, runs them
+  (Docker on Linux, bare on macOS), streams logs, uploads artifacts.
+- **CLI** (`cmd/pool`) — `submit`, `caps`, `nodes`, `jobs`, `logs`, `get`,
+  `colab`, `node-add`.
 - **fabric** — Tailscale. No public IPs, no port forwarding.
+
+## The dashboard
+
+Mobile-first and usable from a phone on the tailnet. It shows what is **free**
+rather than what is installed, keeps swap out of the RAM headline, and builds
+the submit form from live capability data so you are only offered choices the
+pool can currently satisfy — anything it cannot is disabled with the reason
+attached. Before you submit, the real scheduler is asked whether the
+combination can be placed, and answers in plain words ("1 machine can run this
+now", or "no machine fits: mac-mini (gpu-type=metal, needs cuda)").
+
+It also carries a one-click **Colab launcher** (a pre-filled join cell, the
+runtime options, and what High-RAM actually changes) and an **Add a machine**
+panel that generates copy-paste onboarding commands per platform.
+
+The visual system is documented in [DESIGN.md](DESIGN.md).
 
 ## Quick start (all on one machine, to try it)
 
@@ -50,7 +67,9 @@ Open `http://127.0.0.1:8080` for the dashboard.
 ## Job model (§4)
 
 A job is `{ files, runtime, requirements, timeout }`. Runtime is inferred from
-the entry file:
+the entry file, and a machine only takes a runtime it can actually execute (the
+agent probes for `python`, `papermill`/`jupyter`, and a working JDK, so a
+`.java` job is never scheduled onto a box whose `javac` is a broken stub):
 
 | File     | How it runs |
 |----------|-------------|
@@ -61,10 +80,22 @@ the entry file:
 Submit flags map to scheduler requirements:
 
 ```sh
+pool caps                                    # what the pool can run right now
 pool submit train.py --needs gpu:cuda --min-ram 16g --timeout 7200
-pool submit infer.py --disk-backed          # sparse mmap weights, don't demand full RAM (§6.4)
+pool submit infer.py --disk-backed           # sparse mmap weights, don't demand full RAM (§6.4)
 pool submit quick.ipynb --allow-preempt      # permit Colab nodes
+pool colab                                   # Colab runtimes + join cell
+pool node-add windows                        # onboarding commands for a machine
 ```
+
+Run `pool caps` first: it reports the runtimes, GPU types, architectures and RAM
+ceilings the pool can satisfy at this moment, computed from live heartbeats.
+
+## Adding machines
+
+Gaming laptop, cloud VM, Mac, or Colab: see **[docs/NODES.md](docs/NODES.md)**.
+The dashboard's "Add a machine" panel and `pool node-add` both generate the
+commands pre-filled with your control plane URL and join token.
 
 ## Scheduler (§4, §6)
 

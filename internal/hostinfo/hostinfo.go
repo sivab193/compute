@@ -35,6 +35,7 @@ func Collect(nodeName string, extraLabels map[string]string, agentVersion string
 	hb.DiskTotalMB, hb.DiskFreeMB = diskInfo(workDirRoot())
 	hb.GPUs = detectGPUs()
 	hb.DockerAvailable = dockerAvailable()
+	hb.Toolchains = detectToolchains()
 
 	// Base labels the scheduler relies on.
 	hb.Labels["arch"] = runtime.GOARCH
@@ -304,4 +305,61 @@ func dockerAvailable() bool {
 	}
 	// `docker info` fails fast if the daemon is not reachable.
 	return exec.Command(path, "info", "--format", "{{.ServerVersion}}").Run() == nil
+}
+
+// ---- Toolchains -----------------------------------------------------------
+
+// detectToolchains probes which job runtimes this machine can actually execute.
+// The control plane unions these across online nodes to build the submit form,
+// so a claim here must mean the job will really run.
+func detectToolchains() map[string]bool {
+	t := map[string]bool{}
+
+	// Python: either python3 or python on PATH.
+	t[types.ToolPython] = lookPathAny("python3", "python")
+
+	// Notebook: papermill (preferred) or jupyter for nbconvert.
+	t[types.ToolNotebook] = lookPathAny("papermill", "jupyter")
+
+	// Java: a working compiler is the universal path. On macOS /usr/bin/javac
+	// is a stub that exists even with no JDK installed, so presence on PATH is
+	// not enough — probe that it actually runs.
+	t[types.ToolJava] = javaUsable()
+
+	// Docker is tracked separately too, but include it so one map describes the
+	// node's execution surface.
+	t[types.ToolDocker] = dockerAvailable()
+
+	return t
+}
+
+func lookPathAny(names ...string) bool {
+	for _, n := range names {
+		if _, err := exec.LookPath(n); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// javaUsable reports whether this node can compile-and-run or source-launch
+// Java. It runs the tool rather than trusting PATH, because macOS ships stubs
+// that fail at exec time.
+func javaUsable() bool {
+	if _, err := exec.LookPath("javac"); err == nil {
+		if exec.Command("javac", "-version").Run() == nil {
+			return true
+		}
+	}
+	// No compiler: a JDK 11+ runtime can still source-launch a single file.
+	if _, err := exec.LookPath("java"); err == nil {
+		out, err := exec.Command("java", "-version").CombinedOutput()
+		if err != nil {
+			return false
+		}
+		// Reject 1.8-era runtimes, which cannot run `java Foo.java`.
+		return !strings.Contains(string(out), `"1.8`) &&
+			!strings.Contains(string(out), `"1.7`)
+	}
+	return false
 }

@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 	labels_json      TEXT NOT NULL DEFAULT '{}',
 	running_jobs     INTEGER NOT NULL DEFAULT 0,
 	docker_available INTEGER NOT NULL DEFAULT 0,
+	toolchains_json  TEXT NOT NULL DEFAULT '{}',
 	agent_version    TEXT NOT NULL DEFAULT '',
 	last_heartbeat   TEXT NOT NULL DEFAULT '',
 	registered_at    TEXT NOT NULL DEFAULT ''
@@ -65,6 +67,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 	runtime        TEXT NOT NULL,
 	entry_file     TEXT NOT NULL,
 	state          TEXT NOT NULL,
+	seq            INTEGER NOT NULL DEFAULT 0,
 	needs_gpu      TEXT NOT NULL DEFAULT '',
 	min_ram_mb     INTEGER NOT NULL DEFAULT 0,
 	needs_arch     TEXT NOT NULL DEFAULT '',
@@ -91,8 +94,22 @@ CREATE TABLE IF NOT EXISTS logs (
 CREATE INDEX IF NOT EXISTS idx_logs_job ON logs(job_id, id);
 CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state, submitted_at);
 `
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+	// Additive migrations for databases created by an earlier version. SQLite
+	// has no "ADD COLUMN IF NOT EXISTS", so a duplicate-column error is the
+	// expected no-op and is swallowed; anything else is a real failure.
+	for _, stmt := range []string{
+		`ALTER TABLE nodes ADD COLUMN toolchains_json TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE jobs ADD COLUMN seq INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := s.db.Exec(stmt); err != nil &&
+			!strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migrate %q: %w", stmt, err)
+		}
+	}
+	return nil
 }
 
 // ---- Node operations ------------------------------------------------------
@@ -101,12 +118,13 @@ CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state, submitted_at);
 func (s *Store) UpsertNode(n *types.Node) error {
 	gpus, _ := json.Marshal(n.GPUs)
 	labels, _ := json.Marshal(n.Labels)
+	tools, _ := json.Marshal(n.Toolchains)
 	_, err := s.db.Exec(`
 INSERT INTO nodes (name, token, status, cpu_count, load_avg_1, gpus_json,
 	ram_total_mb, ram_free_mb, disk_total_mb, disk_free_mb, swap_total_mb,
-	swap_free_mb, labels_json, running_jobs, docker_available, agent_version,
-	last_heartbeat, registered_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	swap_free_mb, labels_json, running_jobs, docker_available, toolchains_json,
+	agent_version, last_heartbeat, registered_at)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(name) DO UPDATE SET
 	status=excluded.status, cpu_count=excluded.cpu_count,
 	load_avg_1=excluded.load_avg_1, gpus_json=excluded.gpus_json,
@@ -114,31 +132,33 @@ ON CONFLICT(name) DO UPDATE SET
 	disk_total_mb=excluded.disk_total_mb, disk_free_mb=excluded.disk_free_mb,
 	swap_total_mb=excluded.swap_total_mb, swap_free_mb=excluded.swap_free_mb,
 	labels_json=excluded.labels_json, running_jobs=excluded.running_jobs,
-	docker_available=excluded.docker_available, agent_version=excluded.agent_version,
+	docker_available=excluded.docker_available,
+	toolchains_json=excluded.toolchains_json,
+	agent_version=excluded.agent_version,
 	last_heartbeat=excluded.last_heartbeat`,
 		n.Name, n.Token, n.Status, n.CPUCount, n.LoadAvg1, string(gpus),
 		n.RAMTotalMB, n.RAMFreeMB, n.DiskTotalMB, n.DiskFreeMB, n.SwapTotalMB,
 		n.SwapFreeMB, string(labels), n.RunningJobs, boolToInt(n.DockerAvailable),
-		n.AgentVersion, n.LastHeartbeat.Format(time.RFC3339Nano),
+		string(tools), n.AgentVersion, n.LastHeartbeat.Format(time.RFC3339Nano),
 		n.RegisteredAt.Format(time.RFC3339Nano))
 	return err
 }
 
+// nodeSelect lists node columns in the order scanNode expects.
+const nodeSelect = `SELECT name, token, status, cpu_count, load_avg_1,
+	gpus_json, ram_total_mb, ram_free_mb, disk_total_mb, disk_free_mb,
+	swap_total_mb, swap_free_mb, labels_json, running_jobs, docker_available,
+	toolchains_json, agent_version, last_heartbeat, registered_at FROM nodes`
+
 // GetNode returns a node by name, or (nil, nil) if absent.
 func (s *Store) GetNode(name string) (*types.Node, error) {
-	row := s.db.QueryRow(`SELECT name, token, status, cpu_count, load_avg_1,
-		gpus_json, ram_total_mb, ram_free_mb, disk_total_mb, disk_free_mb,
-		swap_total_mb, swap_free_mb, labels_json, running_jobs, docker_available,
-		agent_version, last_heartbeat, registered_at FROM nodes WHERE name=?`, name)
+	row := s.db.QueryRow(nodeSelect+` WHERE name=?`, name)
 	return scanNode(row)
 }
 
 // ListNodes returns all nodes ordered by name.
 func (s *Store) ListNodes() ([]*types.Node, error) {
-	rows, err := s.db.Query(`SELECT name, token, status, cpu_count, load_avg_1,
-		gpus_json, ram_total_mb, ram_free_mb, disk_total_mb, disk_free_mb,
-		swap_total_mb, swap_free_mb, labels_json, running_jobs, docker_available,
-		agent_version, last_heartbeat, registered_at FROM nodes ORDER BY name`)
+	rows, err := s.db.Query(nodeSelect + ` ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -172,12 +192,12 @@ type scanner interface {
 
 func scanNode(sc scanner) (*types.Node, error) {
 	var n types.Node
-	var gpusJSON, labelsJSON, lastHB, regAt string
+	var gpusJSON, labelsJSON, toolsJSON, lastHB, regAt string
 	var dockerAvail int
 	err := sc.Scan(&n.Name, &n.Token, &n.Status, &n.CPUCount, &n.LoadAvg1,
 		&gpusJSON, &n.RAMTotalMB, &n.RAMFreeMB, &n.DiskTotalMB, &n.DiskFreeMB,
 		&n.SwapTotalMB, &n.SwapFreeMB, &labelsJSON, &n.RunningJobs, &dockerAvail,
-		&n.AgentVersion, &lastHB, &regAt)
+		&toolsJSON, &n.AgentVersion, &lastHB, &regAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -186,6 +206,7 @@ func scanNode(sc scanner) (*types.Node, error) {
 	}
 	_ = json.Unmarshal([]byte(gpusJSON), &n.GPUs)
 	_ = json.Unmarshal([]byte(labelsJSON), &n.Labels)
+	_ = json.Unmarshal([]byte(toolsJSON), &n.Toolchains)
 	n.DockerAvailable = dockerAvail != 0
 	n.LastHeartbeat, _ = time.Parse(time.RFC3339Nano, lastHB)
 	n.RegisteredAt, _ = time.Parse(time.RFC3339Nano, regAt)
@@ -194,14 +215,21 @@ func scanNode(sc scanner) (*types.Node, error) {
 
 // ---- Job operations -------------------------------------------------------
 
-// InsertJob persists a newly submitted job.
+// InsertJob persists a newly submitted job, assigning it the next per-pool
+// sequence number for its short human-facing code.
 func (s *Store) InsertJob(j *types.Job) error {
+	if j.Seq == 0 {
+		if err := s.db.QueryRow(
+			`SELECT COALESCE(MAX(seq), 0) + 1 FROM jobs`).Scan(&j.Seq); err != nil {
+			return err
+		}
+	}
 	_, err := s.db.Exec(`
-INSERT INTO jobs (id, name, runtime, entry_file, state, needs_gpu, min_ram_mb,
+INSERT INTO jobs (id, name, runtime, entry_file, state, seq, needs_gpu, min_ram_mb,
 	needs_arch, needs_os, allow_preempt, disk_backed, timeout_sec, assigned_node,
 	lane, exit_code, reason, submitted_at, started_at, finished_at, artifact_count)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		j.ID, j.Name, j.Runtime, j.EntryFile, j.State, j.NeedsGPU, j.MinRAMMB,
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		j.ID, j.Name, j.Runtime, j.EntryFile, j.State, j.Seq, j.NeedsGPU, j.MinRAMMB,
 		j.NeedsArch, j.NeedsOS, boolToInt(j.AllowPreempt), boolToInt(j.DiskBacked),
 		j.TimeoutSec, j.AssignedNode, j.Lane, j.ExitCode, j.Reason,
 		fmtTime(&j.SubmittedAt), fmtTime(j.StartedAt), fmtTime(j.FinishedAt),
@@ -261,7 +289,7 @@ func (s *Store) QueuedJobsFIFO() ([]*types.Job, error) {
 	return out, rows.Err()
 }
 
-const jobSelect = `SELECT id, name, runtime, entry_file, state, needs_gpu,
+const jobSelect = `SELECT id, name, runtime, entry_file, state, seq, needs_gpu,
 	min_ram_mb, needs_arch, needs_os, allow_preempt, disk_backed, timeout_sec,
 	assigned_node, lane, exit_code, reason, submitted_at, started_at,
 	finished_at, artifact_count FROM jobs`
@@ -272,7 +300,7 @@ func scanJob(sc scanner) (*types.Job, error) {
 	var submittedAt string
 	var startedAt, finishedAt sql.NullString
 	var exitCode sql.NullInt64
-	err := sc.Scan(&j.ID, &j.Name, &j.Runtime, &j.EntryFile, &j.State,
+	err := sc.Scan(&j.ID, &j.Name, &j.Runtime, &j.EntryFile, &j.State, &j.Seq,
 		&j.NeedsGPU, &j.MinRAMMB, &j.NeedsArch, &j.NeedsOS, &allowPreempt,
 		&diskBacked, &j.TimeoutSec, &j.AssignedNode, &j.Lane, &exitCode,
 		&j.Reason, &submittedAt, &startedAt, &finishedAt, &j.ArtifactCount)

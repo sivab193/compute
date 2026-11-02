@@ -2,113 +2,301 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Shared Compute Pool</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#191815" />
+<title>compute.siv19.dev — shared compute pool</title>
+<link rel="preload" href="/fonts/archivo-black-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/archivo-var-latin.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-<header class="topbar">
-  <div class="brand">compute<span class="dot">.</span>siv19<span class="dot">.</span>dev</div>
-  <div class="conn" id="conn">connecting…</div>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <a class="wordmark" href="/">compute<span class="wordmark-dim">.siv19.dev</span></a>
+    <p class="link-state" id="conn" data-state="pending">
+      <span class="lamp" aria-hidden="true"></span><span id="conn-text">connecting</span>
+    </p>
+  </div>
 </header>
 
-<main>
-  <!-- Aggregate header: ONLINE nodes only (§3) -->
-  <section class="agg" id="agg">
-    <div class="stat"><span class="num" id="s-cpu">—</span><span class="lbl">vCPUs</span></div>
-    <div class="stat"><span class="num" id="s-gpu">—</span><span class="lbl">GPUs</span></div>
-    <div class="stat"><span class="num" id="s-vram">—</span><span class="lbl">VRAM (cuda / metal)</span></div>
-    <div class="stat"><span class="num" id="s-ram">—</span><span class="lbl">RAM</span></div>
-    <div class="stat swap"><span class="num" id="s-swap">—</span><span class="lbl">Swap (slow)</span></div>
-    <div class="stat"><span class="num" id="s-disk">—</span><span class="lbl">Disk</span></div>
-    <div class="stat"><span class="num" id="s-nodes">—</span><span class="lbl">online / offline</span></div>
-    <div class="stat"><span class="num" id="s-jobs">—</span><span class="lbl">running / queued</span></div>
+<main id="main">
+
+  <!-- Capacity: one measured band, online machines only. -->
+  <section class="band" aria-labelledby="h-capacity">
+    <h1 class="band-title" id="h-capacity">Available compute</h1>
+
+    <div class="band-primary">
+      <div class="fig fig-lg">
+        <p class="fig-num" id="s-cpu">—</p>
+        <p class="fig-lab" id="lab-cpu">vCPUs</p>
+      </div>
+      <div class="fig fig-lg">
+        <p class="fig-num" id="s-ram">—</p>
+        <p class="fig-lab" id="lab-ram">RAM free</p>
+      </div>
+      <div class="fig fig-lg">
+        <p class="fig-num" id="s-gpu">—</p>
+        <p class="fig-lab" id="s-gpu-lab">GPUs</p>
+      </div>
+    </div>
+
+    <div class="band-secondary">
+      <div class="fig">
+        <p class="fig-num fig-sm" id="s-vram-cuda">—</p>
+        <p class="fig-lab" id="lab-cuda">CUDA VRAM</p>
+      </div>
+      <div class="fig">
+        <p class="fig-num fig-sm" id="s-vram-metal">—</p>
+        <p class="fig-lab" id="lab-metal">Metal VRAM</p>
+      </div>
+      <div class="fig fig-swap">
+        <p class="fig-num fig-sm" id="s-swap">—</p>
+        <p class="fig-lab"><span class="hazard" aria-hidden="true"></span>Swap (disk)</p>
+      </div>
+      <div class="fig">
+        <p class="fig-num fig-sm" id="s-disk">—</p>
+        <p class="fig-lab" id="lab-disk">Disk</p>
+      </div>
+    </div>
+
+    <p class="band-foot" id="band-foot">No machines reporting yet.</p>
   </section>
 
-  <div class="grid">
-    <!-- Submit form -->
-    <section class="card submit">
-      <h2>Submit a job</h2>
-      <form id="submit-form">
-        <label>File(s) <small>.py / .ipynb / .java (+ requirements.txt)</small>
-          <input type="file" id="f-files" name="files" multiple required />
-        </label>
-        <div class="row">
-          <label>GPU
-            <select id="f-gpu" name="needs_gpu">
-              <option value="">none</option>
-              <option value="cuda">cuda</option>
-              <option value="metal">metal</option>
-            </select>
+  <div class="columns">
+
+    <!-- Submit -->
+    <section class="plate" aria-labelledby="h-submit">
+      <h2 class="plate-title" id="h-submit">Submit a job</h2>
+
+      <form id="submit-form" novalidate>
+        <div class="field">
+          <label class="lab" for="f-files">Files</label>
+          <div class="filepick">
+            <input class="file-native" type="file" id="f-files" name="files" multiple required
+                   aria-describedby="runtime-note" />
+            <label class="filepick-btn" for="f-files">
+              <svg class="btn-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+              Choose files
+            </label>
+            <span class="file-name" id="file-name" data-has="false">nothing chosen yet</span>
+          </div>
+          <p class="hint" id="runtime-note">A <code>.py</code>, <code>.ipynb</code> or
+            <code>.java</code> file. Add <code>requirements.txt</code> and it is installed first.</p>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="lab" for="f-gpu">GPU</label>
+            <select id="f-gpu" name="needs_gpu"></select>
+            <p class="hint" id="gpu-hint"></p>
+          </div>
+          <div class="field">
+            <label class="lab" for="f-ram">Minimum RAM</label>
+            <div class="ram-input">
+              <input type="number" id="f-ram" name="min_ram_mb" min="0" step="256"
+                     placeholder="0" inputmode="numeric" />
+              <span class="unit">MB</span>
+            </div>
+            <p class="hint" id="ram-hint"></p>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="lab" for="f-arch">Architecture</label>
+            <select id="f-arch" name="needs_arch"></select>
+          </div>
+          <div class="field">
+            <label class="lab" for="f-os">Operating system</label>
+            <select id="f-os" name="needs_os"></select>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="lab" for="f-timeout">Timeout</label>
+            <div class="ram-input">
+              <input type="number" id="f-timeout" name="timeout_sec" min="0" step="60"
+                     placeholder="3600" inputmode="numeric" />
+              <span class="unit">sec</span>
+            </div>
+          </div>
+          <div class="field">
+            <label class="lab" for="f-name">Label <span class="opt">optional</span></label>
+            <input type="text" id="f-name" name="name" placeholder="nightly train" />
+          </div>
+        </div>
+
+        <div class="checks">
+          <label class="check" id="preempt-wrap">
+            <input type="checkbox" id="f-preempt" name="allow_preempt" />
+            <span>
+              <span class="check-name">Allow preemptible machines</span>
+              <span class="check-note" id="preempt-note"></span>
+            </span>
           </label>
-          <label>Min RAM (MB)
-            <input type="number" id="f-ram" name="min_ram_mb" min="0" placeholder="0" />
-          </label>
-          <label>Timeout (s)
-            <input type="number" id="f-timeout" name="timeout_sec" min="0" placeholder="3600" />
+          <label class="check">
+            <input type="checkbox" id="f-disk" name="disk_backed" />
+            <span>
+              <span class="check-name">Disk-backed weights</span>
+              <span class="check-note">Memory-mapped weights read sparsely from disk,
+                so the full model size is not required in RAM.</span>
+            </span>
           </label>
         </div>
-        <div class="row">
-          <label>Arch
-            <select id="f-arch" name="needs_arch">
-              <option value="">any</option>
-              <option value="amd64">amd64</option>
-              <option value="arm64">arm64</option>
-            </select>
-          </label>
-          <label>OS
-            <select id="f-os" name="needs_os">
-              <option value="">any</option>
-              <option value="linux">linux</option>
-              <option value="darwin">darwin</option>
-              <option value="windows">windows</option>
-            </select>
-          </label>
-          <label class="check"><input type="checkbox" id="f-preempt" name="allow_preempt" /> allow preemptible (Colab)</label>
-          <label class="check"><input type="checkbox" id="f-disk" name="disk_backed" /> disk-backed weights (§6.4)</label>
+
+        <output class="verdict" id="verdict" data-state="idle" for="f-gpu f-ram f-arch f-os f-preempt f-disk"></output>
+
+        <div class="actions">
+          <button class="btn btn-primary" type="submit" id="btn-submit">Submit job</button>
+          <button class="btn btn-ghost" type="button" id="btn-queue" hidden>Queue it anyway</button>
         </div>
-        <button type="submit">Submit</button>
-        <div class="formmsg" id="submit-msg"></div>
+        <p class="formmsg" id="submit-msg" role="status" aria-live="polite"></p>
       </form>
     </section>
 
-    <!-- Nodes -->
-    <section class="card">
-      <h2>Nodes</h2>
-      <div id="nodes" class="nodes"></div>
-      <h3 class="offline-h">Offline capacity</h3>
-      <div id="nodes-offline" class="nodes offline"></div>
+    <!-- Node directory -->
+    <section class="plate" aria-labelledby="h-nodes">
+      <h2 class="plate-title" id="h-nodes">Machines</h2>
+      <div class="directory" id="nodes"></div>
+      <div id="offline-block" hidden>
+        <h3 class="sub-title">Offline, not counted above</h3>
+        <div class="directory directory-off" id="nodes-offline"></div>
+      </div>
     </section>
+
   </div>
 
   <!-- Jobs -->
-  <section class="card">
-    <h2>Jobs</h2>
-    <table class="jobs" id="jobs-table">
-      <thead>
-        <tr><th>ID</th><th>Name</th><th>Runtime</th><th>State</th><th>Node</th><th>Lane</th><th>Exit</th><th>Artifacts</th><th></th></tr>
-      </thead>
-      <tbody id="jobs-body"></tbody>
-    </table>
+  <section class="plate" aria-labelledby="h-jobs">
+    <h2 class="plate-title" id="h-jobs">Jobs</h2>
+    <div class="table-wrap">
+      <table class="jobs">
+        <caption class="visually-hidden">Submitted jobs, newest first. Select a row to read its log.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Code</th>
+            <th scope="col">Label</th>
+            <th scope="col">Runtime</th>
+            <th scope="col">State</th>
+            <th scope="col">Machine</th>
+            <th scope="col">Lane</th>
+            <th scope="col" class="num">Exit</th>
+            <th scope="col" class="num">Files</th>
+            <th scope="col"><span class="visually-hidden">Log</span></th>
+          </tr>
+        </thead>
+        <tbody id="jobs-body"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="jobs-empty">Nothing submitted yet.</p>
+
+    <!-- Inline log panel: expands under the table, no modal. -->
+    <div class="logpanel" id="logpanel" hidden>
+      <div class="logpanel-head">
+        <h3 class="sub-title" id="log-title">Log</h3>
+        <button class="iconbtn" type="button" id="log-close" aria-label="Close log">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <pre class="logs" id="log-body" tabindex="0" aria-live="polite"></pre>
+      <div class="artifacts" id="artifact-list"></div>
+    </div>
   </section>
-  <!-- Usage view (Phase 3) -->
-  <section class="card">
-    <h2>Usage</h2>
-    <div id="usage" class="usage"></div>
+
+  <!-- Colab -->
+  <section class="plate" aria-labelledby="h-colab">
+    <h2 class="plate-title" id="h-colab">Add a Colab machine</h2>
+    <p class="lede">Colab sessions are free GPU capacity that can disappear mid-run, so they
+      join as <em>preemptible</em> and only take jobs that opt in.</p>
+
+    <div class="actions actions-wrap">
+      <a class="btn btn-primary" id="colab-open" href="https://colab.research.google.com/#create=true"
+         target="_blank" rel="noopener noreferrer">
+        Open a blank notebook
+        <svg class="btn-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+      </a>
+      <button class="btn btn-ghost" type="button" id="colab-copy">
+        <svg class="btn-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy the join cell
+      </button>
+    </div>
+
+    <ol class="steps">
+      <li>Open a blank notebook.</li>
+      <li>Choose <strong>Runtime → Change runtime type</strong> and pick a runtime from the table below.</li>
+      <li>Paste the join cell, add a Tailscale auth key, and run it. Leave the cell
+        running: the machine leaves the pool when it stops.</li>
+    </ol>
+
+    <details class="snippet-wrap">
+      <summary>Show the join cell</summary>
+      <pre class="snippet" id="colab-snippet">loading…</pre>
+    </details>
+
+    <h3 class="sub-title">Runtimes Colab offers</h3>
+    <div class="table-wrap">
+      <table class="tiers">
+        <thead>
+          <tr>
+            <th scope="col">Runtime</th>
+            <th scope="col">Accelerator</th>
+            <th scope="col" class="num">VRAM</th>
+            <th scope="col" class="num">RAM</th>
+            <th scope="col" class="num">High-RAM</th>
+            <th scope="col" class="num">vCPU</th>
+            <th scope="col">In the pool</th>
+          </tr>
+        </thead>
+        <tbody id="tiers-body"></tbody>
+      </table>
+    </div>
+    <p class="hint" id="colab-caveat"></p>
+
+    <h3 class="sub-title">What High-RAM actually gives you</h3>
+    <p class="lede">High-RAM is a runtime shape, not an accelerator: it raises <em>host</em> RAM
+      and leaves the GPU unchanged. It matters most on the CPU and T4 runtimes, taking host
+      RAM from roughly 13 GB to about 51 GB. The L4 and A100 runtimes already come with a
+      large RAM allowance, so the toggle changes little there.</p>
+
+    <h3 class="sub-title">Measured in this pool</h3>
+    <div class="measured" id="colab-measured"></div>
   </section>
+
+  <!-- Add a machine -->
+  <section class="plate" aria-labelledby="h-enroll">
+    <h2 class="plate-title" id="h-enroll">Add a machine</h2>
+    <div class="tabs" id="enroll-tabs" role="tablist" aria-label="Machine type"></div>
+    <div id="enroll-panels"></div>
+  </section>
+
+  <!-- Usage -->
+  <section class="plate" aria-labelledby="h-usage">
+    <h2 class="plate-title" id="h-usage">Usage</h2>
+    <div class="usage" id="usage"></div>
+  </section>
+
 </main>
 
-<!-- Log viewer modal -->
-<div class="modal" id="log-modal">
-  <div class="modal-box">
-    <div class="modal-head">
-      <span id="log-title">Logs</span>
-      <button id="log-close">✕</button>
+<footer class="site-footer">
+  <div class="site-footer-in">
+    <p class="footer-tag">Build • Automate • Open Source</p>
+    <div class="footer-links">
+      <a href="https://siv19.dev/" target="_blank" rel="noopener noreferrer">siv19.dev</a>
+      <a href="https://github.com/sivab193" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+      </a>
+      <a href="https://www.linkedin.com/in/sivab193/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+      </a>
+      <a href="https://www.instagram.com/siv19.dev/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
+      </a>
     </div>
-    <pre class="logs" id="log-body"></pre>
-    <div class="modal-foot" id="artifact-list"></div>
   </div>
-</div>
+</footer>
 
 <script src="/app.js"></script>
 </body>

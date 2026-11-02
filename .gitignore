@@ -5,3 +5,27 @@
 *.db-wal
 *.db-shm
 .DS_Store
+
+# Node modules, if a tool is installed locally for asset generation.
+node_modules/
+
+# Impeccable design-skill installs. These are per-tool harness copies of the
+# same skill (~19 MB each) and are reproducible with `npx impeccable install`,
+# so they are not part of the project source.
+.agent/
+.agents/
+.claude/
+.codex/
+.gemini/
+.kiro/
+.opencode/
+.pi/
+
+# Impeccable working files. The surface brief under .impeccable/surfaces/ is a
+# committed design contract and is tracked; review captures and generated
+# mockups are build artifacts and are not.
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/build/
+.impeccable/live/
+.impeccable/questions/

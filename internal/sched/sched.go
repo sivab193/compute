@@ -110,6 +110,10 @@ func labelsMatch(j *types.Job, n *types.Node) (string, bool) {
 	if j.NeedsOS != "" && n.Labels["os"] != j.NeedsOS {
 		return fmt.Sprintf("os=%s, needs %s", n.Labels["os"], j.NeedsOS), false
 	}
+	// Toolchain: the node must be able to execute this runtime at all.
+	if j.Runtime != "" && !n.CanRun(j.Runtime) {
+		return fmt.Sprintf("cannot run %s jobs", j.Runtime), false
+	}
 	// Preemptible nodes (Colab) are excluded from default scheduling unless the
 	// job opts in (§3).
 	if n.Preemptible() && !j.AllowPreempt {
