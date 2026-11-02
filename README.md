@@ -1,13 +1,18 @@
 # Shared Compute Pool
 
-One place to add any machine — cloud VMs from any provider, Colab, the Mac
-mini, the gaming laptop — see total available compute, and from anywhere submit
-a notebook, a Python file, or a Java file and have it run on any system in the
-pool.
+One place to add any machine — cloud VMs from any provider, Colab instances, a
+Mac mini, a gaming laptop — see total available compute (CPUs, GPUs, RAM,
+storage), and from anywhere submit a notebook, a Python file, or a Java file and
+have it run on any system in the pool.
 
-Self-hosted, single-user, tailnet-only. Implementation of
-`shared-compute-plan.md`, served at `compute.siv19.dev` (see
-[docs/HOSTING.md](docs/HOSTING.md)).
+Self-hosted and single-user by design. All traffic rides a
+[Tailscale](https://tailscale.com) tailnet — no public IPs, no port forwarding,
+nothing exposed to the internet. Written in Go: three dependency-free static
+binaries (control plane, node agent, CLI) that cross-compile to the whole
+heterogeneous fleet (Linux amd64/arm64, macOS arm64, Windows amd64).
+
+Section references (`§N`) below point to the design document this implements.
+See [docs/HOSTING.md](docs/HOSTING.md) for deploying behind a tailnet HTTPS name.
 
 ## Architecture (three layers, §2)
 
